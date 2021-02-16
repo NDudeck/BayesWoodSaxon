@@ -1,0 +1,7 @@
+ input: iat,izt,iap,izp =   6  3  1  0
+
+ input: emin,emax,vnmin,vnmax =      0.000     0.000     0.000     0.000
+ defaults:  vn,adif,rr0,vnls =   1.0000  0.6500  1.2500  1.0000
+ input:     vn,adif,rr0,vnls =   1.0180  1.4255  0.5771  0.0000
+
+   0  1  1 no bound state found
