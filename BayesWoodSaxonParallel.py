@@ -1,26 +1,31 @@
-import subprocess
 import time
 from multiprocessing import Pool
 import numpy as np
 import matplotlib.pyplot as plt
 import emcee
-import corner
+import scipy.integrate as integrate
 import get_wspot_schro as gws
+import math
 
 
 # Method for running wood-saxon executable and grabbing output wavefunction
 def get_wf_ws(theta):
-    wfr,wf,e = gws.get_wspot_wf(A, Z, a, z, nl2j[0], nl2j[1], nl2j[2], theta[0], theta[1], theta[2])
+    wf, e = gws.gwf(A, Z, a, z,
+                    nl2j[0], nl2j[1], nl2j[2],
+                    theta[0], theta[1], theta[2], theta[3], theta[4], theta[5], emin, emax)
 
-    wf_out = np.array((wfr,wf)).T
-    wf_out = wf_out[:100,:]
-    # print(wf_out)
-    # print(e)
+    wf = wf * math.sqrt(sf)
 
+    # norm = integrate.simps(np.square(wf_out[:, 1]) * np.square(wf_out[:, 0]), wf_out[:, 0])
+    # print(norm)
+
+    if np.isnan(e):
+        e = -500
+        # print("NaN e")
     if np.isnan(wf).any():
-        print("NaN in rad.dat")
-        return np.full((100, 2, -np.inf))
-    return wf_out,e
+        # print("NaN in rad.dat")
+        return np.full((100, 1), -500), e
+    return wf, e
 
 
 # Start run timer
@@ -30,40 +35,60 @@ start_time = time.time()
 A = 6  # Lithium 6
 Z = 3
 a = 1  # Neutron is 1,0
-z = 0
-nl2j = [0, 0, 1]  # Desired quantum numbers
+z = 0  # Proton is 1,1
+nl2j = [0, 1, 1]  # Desired quantum numbers
 # TODO both spins at same-ish time
 
 # Load in sampling parameters
-ndim = 3  # number of parameters in the model
-nwalkers = 36  # number of MCMC walkers
-nburn = 200  # "burn-in" period to let chains stabilize
+ndim = 6  # number of parameters in the model
+nwalkers = 32  # number of MCMC walkers
+nburn = 10000  # "burn-in" period to let chains stabilize
 nsteps = 10000  # number of MCMC steps to take
-sigma = 0.2
 N = 100  # Resolution of wavefunction. ws_schro needs to be recompiled to change
+wfr = np.linspace(0, 10, 100)
+np.random.seed(1)
+
+# Build parameter space theta [V_ws, a_ws, r_ws, V_so, a_so, r_so,]
+min_theta = np.array([-85, 0.5, 0.5, 0.5, 0.5, 0.05])
+max_theta = np.array([-35, 3.5, 1.5, 10, 2.5, 0.5])
+emin = -90
+emax = - 1
+# min_theta = np.array([-42.00, 0.80, 3.15, 0.05, 0.05, 1.00])
+# max_theta = np.array([-40.00, 0.90, 3.20, 20, 0.5, 3.00])
+volume_theta = np.prod(max_theta - min_theta)
+mu_prior = 0.5 * (min_theta + max_theta)
 
 # Load Experimental data
-# wf_exp_in = np.genfromtxt("6Li_7Li_overlaps_NNLOopt_hw=10MeV_Nmax12.csv", skip_header=1, delimiter=",")
-wf_exp_in,e_exp = get_wf_ws([1, 1.25, 0.65])
-wf_exp = np.square(wf_exp_in[:, 1] * wf_exp_in[:, 0] + np.random.normal(0, 0.02, 100))
+wf_exp_in = np.genfromtxt(r"/mnt/c/Users/noeld/OneDrive - Louisiana State University/PHYS "
+                          r"4399/6Li_7Li_overlaps_NNLOopt_hw=10MeV_Nmax12 2021-02-05 21_00_39.csv", skip_header=1,
+                          delimiter=",")
+if nl2j[2] == 3:
+    wf_exp = wf_exp_in[:, 1]
+elif nl2j[2] == 1:
+    wf_exp = wf_exp_in[:, 2]
+else:
+    print("Need valid 2j")
+    raise ValueError
+e_exp = -7.2499
 
-# Plot experimental data
-# plt.ion()
-# figure, ax = plt.subplots(figsize=(8, 6))
-# line1, = ax.plot(wf_exp_in[:, 0], wf_exp)
-# line2 = ax.scatter(wf_exp_in[:, 0], wf_exp)
-# plt.title("WS Psi vs Exp Psi", fontsize=25)
-# plt.xlabel("r", fontsize=18)
-# plt.ylabel("psi^2(r)", fontsize=18)
+sigma_e = 0.10 * e_exp
+sigma_wf = 0.10 * max(wf_exp)
+# sigma_wf = 0.04
+# sigma_e = 0.3
 
-# Build parameter space theta [V_N, a_0, r_0]
-min_theta = np.array([0.85, 1.1, 0.50])
-max_theta = np.array([1.15, 1.4, 0.80])
-# min_theta = np.array([0.5, 1.0, 0.45])
-# max_theta = np.array([1.9, 1.9, 0.95])
-mu_prior = 0.5 * (min_theta + max_theta)
-volume_theta = np.prod(max_theta - min_theta)
 
+# sf = integrate.simps(np.square(wf_exp) * np.square(wf_exp_in[:, 0]), wf_exp_in[:, 0])
+
+
+# For synthetic data
+sf = 1
+if nl2j[2] == 1:
+    theta_truths = [-41.80, 3.18, 0.85, 2*2.45, 1.35, 0.17]
+else:
+    theta_truths = [-69.55, 1.89, 1.17, 2*2.13, 2.36, 0.21]
+
+wf_exp_in, e_exp = get_wf_ws(theta_truths)
+wf_exp = wf_exp_in + np.random.normal(0, 0.0, 100)
 
 def log_prior_uniform(theta):
     # Flat prior
@@ -74,18 +99,18 @@ def log_prior_uniform(theta):
 
 
 def log_prior_gaussian(theta):
-    # Flat prior
+    # Gaussian prior
     if np.logical_and(min_theta <= theta, theta <= max_theta).all():
-        return -0.5 * np.sum(((theta - mu_prior) / sigma) ** 2) - 0.5 * N * np.log(2 * np.pi * sigma ** 2)
+        return -0.5 * np.sum(((theta - mu_prior) / sigma_wf) ** 2) - 0.5 * N * np.log(2 * np.pi * sigma_wf ** 2)
     else:
         return -np.inf
 
 
 def log_likelihood(theta):
     # print("Params " + str(theta))
-
-    wf_ws,e_ws = get_wf_ws(theta)  # Grab wavefunction with provided theta
-    wf_ws = np.square(wf_ws[:, 1] * wf_ws[:, 0])  # turn phi(r)/r to psi(r) then square
+    weight = 1
+    wf_ws, e_ws = get_wf_ws(theta)  # Grab wavefunction with provided theta
+    # wf_ws = wf_ws[:, 1] * wf_ws[:, 0]  # turn phi(r)/r to psi(r) then square
 
     # Update dynamic plot
     # line1.set_xdata(np.linspace(0, 10, 100))
@@ -95,10 +120,11 @@ def log_likelihood(theta):
     # time.sleep(0.1)
 
     try:
-        # Gaussian Log Likelyhood
+        # Gaussian Log Likelihood
         # Sigma has to be < (2pi)^-0.5 (or about 0.39) to keep ll < 0
-        ll_wf = -0.5 * np.sum(((wf_exp - wf_ws) / sigma) ** 2) + 0.5 * N * np.log(2 * np.pi * sigma ** 2)
-        ll_e = -0.5 * np.sum(((e_exp - e_ws) / sigma) ** 2) + 0.5 * N * np.log(2 * np.pi * sigma ** 2)
+        ll_wf = -0.5 * np.sum(((wf_exp - wf_ws) / sigma_wf) ** 2) + 0.5 * N * np.log(2 * np.pi * sigma_wf ** 2)
+        ll_e = weight * -0.5 * np.sum(((e_exp - e_ws) / sigma_e) ** 2) + 0.5 * N * np.log(2 * np.pi * sigma_e ** 2)
+        # print(ll_wf + ll_e)
         return ll_wf + ll_e
     except ValueError:
         print("value Error")
@@ -114,10 +140,10 @@ def main():
         # Start at random locations within the prior volume
         starting_guesses = np.random.uniform(min_theta, max_theta, (nwalkers, ndim))
 
-        # Initialize sampler using paramters
-        print("MCMC sampling using emcee (affine-invariant ensamble sampler) with {0} walkers".format(nwalkers))
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, pool=pool, moves=emcee.moves.DESnookerMove())
-
+        # Initialize sampler using parameters
+        print("MCMC sampling using emcee (affine-invariant ensemble sampler) with {0} walkers".format(nwalkers))
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, pool=pool,  moves=emcee.moves.DESnookerMove())
+        #
         # "burn-in" period; save final positions and then reset
         pos, prob, state = sampler.run_mcmc(starting_guesses, nburn, progress=True)
         sampler.reset()
@@ -125,48 +151,30 @@ def main():
         # sampling period
         sampler.run_mcmc(pos, nsteps, progress=True)
 
-
     print("Mean acceptance fraction: {0:.3f} (in total {1} steps)"
-              .format(np.mean(sampler.acceptance_fraction), nwalkers * nsteps))
+          .format(np.mean(sampler.acceptance_fraction), nwalkers * nsteps))
 
     print("time elapsed: {:.2f}s".format(time.time() - start_time))
 
     # discard burn-in points and flatten the walkers; the shape of samples is (nwalkers*nsteps, ndim)
     samples = sampler.chain.reshape((-1, ndim))
 
+    # save the output in a compressed and easy to read-in format for analysis
+    np.savez_compressed(r'/mnt/c/Users/noeld/eclipse-workspace/get_wspot_schro/src/parallelout/bayes_out.npz',
+                        samples=samples, chain=sampler.chain, log_prob=sampler.get_log_prob(),
+                        azaz=[A, Z, a, z], nl2j=nl2j, sigma_wf=sigma_wf, sigma_e=sigma_e,
+                        wfr=wfr, wf_exp=wf_exp, e_exp=e_exp, sf=sf, e=[emin, emax])
+
     tau = sampler.get_autocorr_time()
     print(tau)
 
-    # make a corner plot with the posterior distribution
-    fig1 = corner.corner(samples, labels=["V", "a", 'r'], truths=[1, 1.25, 0.65], show_titles=True)
-
-    fig2, axs = plt.subplots(3)
-    for j in range(ndim):
-        for i in range(nwalkers):
-            axs[j].plot(range(nsteps), sampler.chain[i, :, j], linewidth=0.5)
-
-    axs[0].plot(range(nsteps), np.full((nsteps, 1), 1), 'r.')
-    axs[1].plot(range(nsteps), np.full((nsteps, 1), 1.25), 'r.')
-    axs[2].plot(range(nsteps), np.full((nsteps, 1), 0.65), 'r.')
-
-    fig3 = plt.figure()
-    plt.plot(range(nsteps), sampler.get_log_prob())
-
-    plt.show()
-
-    np.savetxt('samples_bayes_out.csv', samples)
-    np.savetxt('chainV_bayes_out.csv', sampler.chain[:, :, 0])
-    np.savetxt('chainA_bayes_out.csv', sampler.chain[:, :, 1])
-    np.savetxt('chainR_bayes_out.csv', sampler.chain[:, :, 2])
-    np.savetxt('log_prob_bayes_out.csv', sampler.get_log_prob())
 
 if __name__ == '__main__':
     main()
     plt.show()
 
-
-
 # To compile code
 #  python3 -m numpy.f2py -c get_wspot_schro.f -m get_wspot_schro
 # To run code
 # python3 BayesWoodSaxonParallel.py
+# python3 "/mnt/c/Users/noeld/OneDrive - Louisiana State University/PHYS 4399/Code/BayesWoodSaxon/BayesWoodSaxonParallel.py"

@@ -1,13 +1,13 @@
-      subroutine get_wspot_wf(at,zt,ap,zp,in,il,ij,iv,ia0,ir0,wfr,wf,eo)
+      subroutine gwf(at,zt,ap,zp,in,il,ij,vw,rw,aw,vs,rs,as,em,ex,wf,eo)
 
       IMPLICIT REAL*8 (A-H,O-Z)
 
       INTEGER at,zt,ap,zp,in,il,ij
-      REAL iv,ia0,ir0,eo
-      REAL*4 wfr(200), wf(200)
+      REAL vw,aw,rw,vs,as,rs,em,ex
+      REAL*8 wf(100)
 
-cf2py intent(in) at,zt,ap,zp,in,il,ij,iv,ia0,ir0
-cf2py intent(out) wfr(100), wf(100), eo
+cf2py intent(in) at,zt,ap,zp,in,il,ij,vw,rw,aw,vs,rs,as,em,ex
+cf2py intent(out) wf(100), eo
 
       common/cadif/adif,rr0
       common/ws1/nrp,lp,j2,iat,izt,iap,izp
@@ -37,17 +37,17 @@ cbab meshsize in fm
 cbab max r for unbound phase shift calculation
       rmax_unbound = 500.
 
-c     subroutine wrapper starts here ?
-c     q numbers and atomic numbers are
-c     ws params are
+cbab set ws parameters
+      vz = vw
+      r0 = rw
+      adif = aw
 
-cbab default ws parameters
-      vz = -53.0
+      vsop = vs
+      r0so = rs
+      aso = as
+
       vzs = -30.0
-      vsop = 22.0
-      rr0 = ir0
-      adif = ia0
-      vnorm = iv
+      vnorm = 1
       vnormls = 1.
 
 cbab back come here is n value is -1
@@ -66,8 +66,8 @@ cbab back come here is n value is -1
 cbab number of steps for scattering energy
       xne = 0.
       xvn = 0.
-      if((emax-emin).gt.0.) xne = 200.
-      if((vnmax-vnmin).gt.0.) xvn = 200.
+      if((emax-emin).gt.0.) xne = 100.
+      if((vnmax-vnmin).gt.0.) xvn = 100.
 
 800   continue
       if(nrp.eq.-1) go to 960
@@ -82,8 +82,10 @@ c      print 555,emin
 810   continue
 c defualt setup for bound states
       xne = 50.
-      emax = -1.
-      emin = -90.
+c      emax = -1.
+c      emin = -90.
+      emax = ex
+      emin = em
 c      print 813
 c813   format('boundstate')
       call boundstate(emin,emax,xne)
@@ -121,7 +123,7 @@ c7777  format(3e12.4)
 cbab number of steps for scattering energy
       xne = 0.
       xvn = 0.
-      if((emax-emin).gt.0.) xne = 200.
+      if((emax-emin).gt.0.) xne = 100.
       xvn = 1.
       go to 995
 998   continue
@@ -172,8 +174,10 @@ c1051  format('potential depth = ',f10.3)
       ifirstp = 999
 1050  continue
       vwst = vws*vnorm
-      r0=rr0*(iat)**0.3333
-      r0c=rr0c*(iat)**0.3333
+c      r0=rr0*(iat)**0.3333
+c      r0c=rr0c*(iat)**0.3333
+c      r0so=rso*(iat)**0.3333
+      r0c=2.0
 c      print 7777,vws,r0,adif
 c7777  format(1x,3f10.3)
 
@@ -186,14 +190,19 @@ c7777  format(1x,3f10.3)
 
 c woods-saxon potential
       y=(x-r0)/adif
+      yso=(x-r0so)/aso  !
       if(x.lt.10.)e=exp(y)
       if(x.ge.10.)e=9999999.
       if(x.lt.10.) f=1./(1.+e)
       if(x.ge.10.) f=0.
+      if(x.lt.10.)eso=exp(yso)  !
+      if(x.ge.10.)eso=9999999.  !
+      if(x.lt.10.) fso=1./(1.+eso)!
+      if(x.ge.10.) fso=0.  !
       vcoul1=ztot*1.44/x
       vcoul2 = 0.
       if(x.lt.r0c) vcoul2=ztot*1.44/r0c*(1.5-0.5*(x/r0c)**2)-vcoul1
-      vso=-vnormls*vsop*(f**2)*e*fl/(x*adif)
+      vso=vsop*(fso**2)*eso*fl/(x*aso)
 c      if(i.eq.10) print 7771,vnormls,vsop,f,e,fl
 c7771  format(10f8.3)
       v1=-vws*f
@@ -488,7 +497,7 @@ c j2   = twice the j value of the single-particle state
       common/crmax/rmax_unbound
       ep = ei
       nsk=1
-      if(ep.lt.0.) rmax = 20.
+      if(ep.lt.0.) rmax = 10.
       if(ep.gt.0.) rmax = rmax_unbound
 c      del = 0.1
       nmax = rmax/del
@@ -532,9 +541,8 @@ c      write(6,7777) lp
       common/main2/del,hbsd2m
 c      open(unit=98,file='rad.dat')
       r = 0.
-      do 200 i = 1,200
+      do 200 i = 1,100
       r = r + del
-      wfr(i) = r
       wf(i) = ub(i)/r
 c      write(98,100) r,ub(i)/r
 100   format(f5.2,2f10.3)
@@ -640,7 +648,7 @@ c      hbsdm = 2.*hbsd2m
 
       r0c = 1.2*(iat**(1./3.))
       ztot = izt
-      do 200 ir = 2,200
+      do 200 ir = 2,100
       r = h*ir
       x1 = ub(ir)
       x2 = ub(ir)
@@ -668,9 +676,9 @@ c      hbsdm = 2.*hbsd2m
 c      xks = s1
       return
       end
-      end
+      end subroutine gwf
 
-c      REAL*4 wfr(200), wf(200)
+c      REAL*4 wf(100)
 
 c      call get_wspot_wf(6, 3, 1, 0, 0, 1, 1, 1.0, 0.65, 1.25, wfr,wf)
 
