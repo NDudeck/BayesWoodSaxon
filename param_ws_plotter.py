@@ -27,7 +27,7 @@ max_theta = np.array([2, 5, 5])
 
 
 def get_wf_ws(theta):
-    l7_dia = open("l7.dai", 'w')
+    l7_dia = open("io/l7.dai", 'w')
     l7_dia.write(str(A) + " " + str(Z) + " " + str(a) + " " + str(z) + "\n\n")
     l7_dia.write(' '.join(map(str, nl2j)) + ' ' + ' '.join(map(str, theta)))
     l7_dia.close()

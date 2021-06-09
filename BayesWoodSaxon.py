@@ -40,13 +40,14 @@ a = 1  # Neutron is 1,0
 z = 0
 nl2j = [0, 1, 1]  # Desired quantum numbers
 # TODO both spins at same-ish time
+# TODO incorperate  energy into log likelyhood
 
 # Load in sampling parameters
 ndim = 3  # number of parameters in the model
 nwalkers = 12  # number of MCMC walkers
 nburn = 10  # "burn-in" period to let chains stabilize
-nsteps = 200  # number of MCMC steps to take
-sigma = 0.45
+nsteps = 20  # number of MCMC steps to take
+sigma = 0.2
 N = 100  # Resolution of wavefunction. ws_schro needs to be recompiled to change
 
 # Load Experimental data
@@ -81,7 +82,7 @@ def log_prior_uniform(theta):
 def log_prior_gaussian(theta):
     # Flat prior
     if np.logical_and(min_theta <= theta, theta <= max_theta).all():
-        return -0.5 * np.sum(((theta - mu_prior) / sigma) ** 2) - 0.5 * N * np.log(2 * np.pi * sigma ** 2)
+        return -0.5 * np.sum(((theta - mu_prior) / sigma) ** 2) + 0.5 * N * np.log(2 * np.pi * sigma ** 2)
     else:
         return -np.inf
 
@@ -102,7 +103,7 @@ def log_likelihood(theta, wf_exp):
     try:
         # Gaussian Log Likelyhood
         # Sigma has to be > (2pi)^-0.5 (or about 0.39) to keep ll < 0
-        ll = -0.5 * np.sum(((wf_exp - wf_ws) / sigma) ** 2) - 0.5 * N * np.log(2 * np.pi * sigma ** 2)
+        ll = -0.5 * np.sum(((wf_exp - wf_ws) / sigma) ** 2) + 0.5 * N * np.log(2 * np.pi * sigma ** 2)
         # print(ll)
         return ll
     except ValueError:
@@ -119,7 +120,7 @@ starting_guesses = np.random.uniform(min_theta, max_theta, (nwalkers, ndim))
 
 # Initialize sampler using paramters
 print("MCMC sampling using emcee (affine-invariant ensamble sampler) with {0} walkers".format(nwalkers))
-sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, args=[wf_exp])
+sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, args=[wf_exp], moves=emcee.moves.DESnookerMove())
 
 # "burn-in" period; save final positions and then reset
 pos, prob, state = sampler.run_mcmc(starting_guesses, nburn, progress=True)
